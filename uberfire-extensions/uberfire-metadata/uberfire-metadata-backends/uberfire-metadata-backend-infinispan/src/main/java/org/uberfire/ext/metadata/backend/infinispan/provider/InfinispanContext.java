@@ -31,6 +31,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.infinispan.client.hotrod.RemoteCache;
 import org.infinispan.client.hotrod.RemoteCacheManager;
 import org.infinispan.client.hotrod.configuration.AuthenticationConfigurationBuilder;
+import org.infinispan.client.hotrod.configuration.Configuration;
 import org.infinispan.client.hotrod.configuration.ConfigurationBuilder;
 import org.infinispan.client.hotrod.configuration.SaslQop;
 import org.infinispan.client.hotrod.exceptions.HotRodClientException;
@@ -59,6 +60,7 @@ public class InfinispanContext implements Disposable {
 
     private static final String PORT = "org.appformer.ext.metadata.infinispan.port";
     private static final String HOST = "org.appformer.ext.metadata.infinispan.host";
+    private static final String HOST_LIST = "org.appformer.ext.metadata.infinispan.host_list";
     private static final String TIMEOUT = "org.appformer.ext.metadata.infinispan.timeout";
     private static final String RETRIES = "org.appformer.ext.metadata.infinispan.retries";
     private static final String USERNAME = "org.appformer.ext.metadata.infinispan.username";
@@ -93,6 +95,9 @@ public class InfinispanContext implements Disposable {
             put(PORT,
                 System.getProperty(PORT,
                                    "11222"));
+            put(HOST_LIST,
+                System.getProperty(HOST_LIST,
+                                   ""));
             put(TIMEOUT,
                 System.getProperty(TIMEOUT,
                                    "30000"));
@@ -184,24 +189,32 @@ public class InfinispanContext implements Disposable {
 
         String host = properties.get(HOST);
         String port = properties.get(PORT);
+        String hostList = properties.get(HOST_LIST);
         String timeout = properties.get(TIMEOUT);
         String retries = properties.get(RETRIES);
 
         try {
             ConfigurationBuilder builder = getMaybeSecurityBuilder(properties)
-                    .addServer()
-                    .host(host)
-                    .port(Integer.parseInt(port))
                     .connectionTimeout(Integer.parseInt(timeout))
                     .maxRetries(Integer.parseInt(retries))
                     .marshaller(new ProtoStreamMarshaller())
                     .marshaller(marshaller);
-            return new RemoteCacheManager(builder.build());
+            Configuration config = StringUtils.isNotEmpty(hostList)
+                    ? builder.addServers(hostList).build()
+                    : builder.addServer().host(host).port(Integer.parseInt(port)).build();
+
+            return new RemoteCacheManager(config);
         } catch (Exception e) {
-            throw new InfinispanException(MessageFormat.format("Error trying to connect to server <{0}:{1}>",
-                                                               host,
-                                                               port),
-                                          e);
+            if (StringUtils.isNotEmpty(hostList)) {
+                throw new InfinispanException(MessageFormat.format("Error trying to connect to servers <{0}>",
+                                                                   hostList),
+                                              e);
+            } else {
+                throw new InfinispanException(MessageFormat.format("Error trying to connect to server <{0}:{1}>",
+                                                                   host,
+                                                                   port),
+                                              e);
+            }
         }
     }
 
